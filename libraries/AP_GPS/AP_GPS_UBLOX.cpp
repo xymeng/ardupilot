@@ -78,11 +78,9 @@ void AP_GPS_UBLOX::init_time_pulse_mode(AP_HAL::UARTDriver *s) {
     _configure_time_pulse();
 }
 
-static AVRTimer timer;
 static volatile bool synced = false;
 static volatile bool locked_timestamp = false;
-static volatile int  pulse_1hz_count = 0;
-static volatile int  last_pulse_width = 0;
+static volatile int  pulse_count = 0;
 static volatile int  mills_compensation = 0;
 static volatile bool start_compensation = false;
 static volatile int  compensation_start_mills = 0;
@@ -99,14 +97,16 @@ static void time_pulse_irq(void) {
 
     uint32_t mills = AVRTimer::millis();
 
-    if (!start_compensation && mills > last_mills + 900 && mills < last_mills + 1100) {
-        // read timestamp info
-        pulse_1hz_count ++;
+    pulse_count ++;
+
+    if (!start_compensation 
+        && (mills > last_mills + 900)
+        && (mills < last_mills + 1100)) {    
     } else if (mills > last_mills + 35 && mills < last_mills + 45) {
         // frequency changed.
         // disable this interrupt.
         // compute frame counter offset.
-        // let's check if we can get last.
+        PCICR &= ~_BV(PCIE2);
         mills_compensation = mills - compensation_start_mills;
         synced = true;
     }
@@ -117,7 +117,6 @@ static void time_pulse_irq(void) {
         compensation_start_mills = mills;
     }
 
-    last_pulse_width = mills - last_mills;
     last_mills = mills;
 }
 
@@ -141,7 +140,7 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
             // initialized. In init_ardupilot(), delay() is also used
             // before scheduler is initialized.
             for (int i = 0; i < 50; i++) {
-                timer.delay_microseconds(65535);
+                AVRTimer::delay_microseconds(65535);
             }
         }
     }
@@ -178,9 +177,13 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     // Note: time pulse frequency must be 1Hz according to the datasheet.
     need_rate_update = false;
     _configure_message_rate(CLASS_TIM, MSG_TIM_TP, 1);
-
-
+    // Delay to give GPS some time to stop outputting pulses.
+    for (int i = 0; i < 50; i++) {
+        AVRTimer::delay_microseconds(65535);
+    }
+    
     // TODO: Signal SBC for resetting the camera.
+    hal.uartC->print("Reset camera");
     
     // Set time pulse frequency to 1Hz. Synchronize pulse count and
     // timestamp.
@@ -202,7 +205,7 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
 
     this_ublox = this;
 
-    int last_pulse_1hz_count = pulse_1hz_count;
+    int last_pulse_count = pulse_count;
 
     // Use PK0 to receive GPS pulses.
     // PK0 is PCINT16, which belongs to group 2.
@@ -227,9 +230,9 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     // TODO: Talk to SBC here.
     //hal.scheduler->delay(4000);
     
-    while (pulse_1hz_count < 4) {
-        if (last_pulse_1hz_count != pulse_1hz_count) {
-            last_pulse_1hz_count = pulse_1hz_count;
+    while (pulse_count < 4) {
+        if (last_pulse_count != pulse_count) {
+            last_pulse_count = pulse_count;
             this_ublox->read2(); // clear buffer
             while(!this_ublox->read2()) {
                 AVRTimer::delay_microseconds(2000);
@@ -250,9 +253,12 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     start_compensation = true;
     synced = false;
     while(!synced);
+
     hal.uartC->print(this_ublox->time_week_ms, 16);
     hal.uartC->print("   ");
     hal.uartC->print(mills_compensation, 10);
+    hal.uartC->print("   ");
+    hal.uartC->print(pulse_count, 10);
     //hal.uartC->printf("%u", this_ublox->time_week_ms);
     hal.uartC->print("    synced");
 }
