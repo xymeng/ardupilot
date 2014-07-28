@@ -71,6 +71,20 @@ static void run_cli(AP_HAL::UARTDriver *port)
 
 #endif // CLI_ENABLED
 
+static void gps_sync() {
+    //hal.uartC->begin(38400, 256, 256);
+   // delay(10);
+    //hal.uartC->printf("hello");
+
+    AP_GPS_UBLOX gps;
+    //hal.uartB->begin(38400, 256, 16);
+   // delay(1000);
+    //hal.uartB->printf("Hello world");
+    gps.init_time_pulse_mode(hal.uartB);
+
+    while(1);
+}
+
 static void init_ardupilot()
 {
     if (!hal.gpio->usb_connected()) {
@@ -106,6 +120,9 @@ static void init_ardupilot()
     cliSerial->printf_P(PSTR("\n\nInit " FIRMWARE_STRING
                          "\n\nFree RAM: %u\n"),
                     memcheck_available_memory());
+
+    gps_sync();
+
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_APM2
     /*

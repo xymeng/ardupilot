@@ -61,6 +61,13 @@ public:
     virtual bool                    read();
     static bool _detect(uint8_t );
 
+    // Set GPS to output time pulse packets.
+    void init_time_pulse_mode(AP_HAL::UARTDriver *s);
+    bool   read2();
+
+    void start_time_pulse();
+    void stop_time_pulse();
+
     static const prog_char          _ublox_set_binary[];
     static const uint8_t            _ublox_set_binary_size;
 
@@ -152,6 +159,31 @@ private:
         uint32_t speed_accuracy;
         uint32_t heading_accuracy;
     };
+
+    struct PACKED cfg_tp5_32{
+        uint8_t index;
+        uint8_t reserved1;
+        uint16_t reserved2;
+        int16_t antenna_cable_delay;
+        int16_t rf_group_delay;
+        uint32_t freq_period;
+        uint32_t freq_period_lock;
+        uint32_t pulse_len_ratio;
+        uint32_t pulse_len_ratio_lock;
+        int32_t user_config_delay;
+        // flags
+        uint8_t active:1;
+        uint8_t lock_gps_freq:1;
+        uint8_t locked_other_set:1;
+        uint8_t is_freq:1;
+        uint8_t is_length:1;
+        uint8_t align_tow:1;
+        uint8_t polarity:1;
+        uint8_t grid_utc_gps:1;
+        uint8_t reserved_flags1;
+        uint8_t reserved_flags2;
+        uint8_t reserved_flags3;
+    };
     // Receive buffer
     union PACKED {
         ubx_nav_posllh posllh;
@@ -168,6 +200,7 @@ private:
         CLASS_NAV = 0x01,
         CLASS_ACK = 0x05,
         CLASS_CFG = 0x06,
+        CLASS_TIM = 0x0D,
         MSG_ACK_NACK = 0x00,
         MSG_ACK_ACK = 0x01,
         MSG_POSLLH = 0x2,
@@ -177,7 +210,9 @@ private:
         MSG_CFG_PRT = 0x00,
         MSG_CFG_RATE = 0x08,
         MSG_CFG_SET_RATE = 0x01,
-        MSG_CFG_NAV_SETTINGS = 0x24
+        MSG_CFG_NAV_SETTINGS = 0x24,
+        MSG_CFG_TP5 = 0x31,
+        MSG_TIM_TP = 0x01
     };
     enum ubs_nav_fix_type {
         FIX_NONE = 0,
@@ -231,6 +266,10 @@ private:
     void        _update_checksum(uint8_t *data, uint8_t len, uint8_t &ck_a, uint8_t &ck_b);
     void        _send_message(uint8_t msg_class, uint8_t msg_id, void *msg, uint8_t size);
     void		send_next_rate_update(void);
+
+    
+    void        _configure_time_pulse(void);
+    bool        _parse_gps2();
 
 };
 
