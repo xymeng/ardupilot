@@ -25,8 +25,10 @@
 // XXX this is not portable!
 #include <avr/interrupt.h>
 #include <avr/io.h>
-#include "AP_HAL_AVR/GPIO.h"
-#include "AP_HAL_AVR/Scheduler.h"
+#include "../AP_HAL_AVR/GPIO.h"
+#include "../AP_HAL_AVR/Scheduler.h"
+
+#include "APMSBCHandshake.h"
 
 using namespace AP_HAL_AVR;
 
@@ -47,6 +49,38 @@ extern const AP_HAL::HAL& hal;
 
 const prog_char AP_GPS_UBLOX::_ublox_set_binary[] PROGMEM = UBLOX_SET_BINARY;
 const uint8_t AP_GPS_UBLOX::_ublox_set_binary_size = sizeof(AP_GPS_UBLOX::_ublox_set_binary);
+
+// Handshake IO
+class HandShakeIO_APM : public HandshakeIO {
+ public:
+  HandShakeIO_APM(AP_HAL::UARTDriver *uart) : uart_(uart) {}
+
+  virtual bool WriteByte(uint8_t c) {
+    // Blocked until write succeeds.
+    while(uart_->write(c) != 1);
+    return true;
+  }
+
+  virtual bool ReadByte(uint16_t timeout_msec, uint8_t *c) {
+    while (1) {
+      if (uart_->available() > 0) {
+        *c = uart_->read();
+        return true;
+      }
+      if (timeout_msec == 0) {
+        return false;
+      }
+      timeout_msec --;
+
+      AVRTimer::delay_microseconds(1000);
+    }
+    // Never gets here.
+    return false;
+  }
+
+ private:
+  AP_HAL::UARTDriver *uart_;
+};
 
 // Public Methods //////////////////////////////////////////////////////////////
 
@@ -136,9 +170,6 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         _port->begin(baudrates[i]);
         _write_progstr_block(_port, _ublox_set_binary, _ublox_set_binary_size);
         while (_port->tx_pending()) {
-            // XXX Not sure if this works when scheduler has not been
-            // initialized. In init_ardupilot(), delay() is also used
-            // before scheduler is initialized.
             for (int i = 0; i < 50; i++) {
                 AVRTimer::delay_microseconds(65535);
             }
@@ -182,9 +213,15 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         AVRTimer::delay_microseconds(65535);
     }
     
-    // TODO: Signal SBC for resetting the camera.
-    hal.uartC->print("Reset camera");
-    
+    hal.uartC->begin(9600, 128, 128);
+    HandShakeIO_APM io(hal.uartC);
+    APM_SBC_Handshake handshake(&io);
+
+    // Keep sending resetting messages until we succeed.
+    while(!handshake.SBCResetCamera()) {
+      AVRTimer::delay_microseconds(65535);
+    }
+
     // Set time pulse frequency to 1Hz. Synchronize pulse count and
     // timestamp.
     _configure_navigation_rate(1000);
@@ -211,8 +248,6 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     // PK0 is PCINT16, which belongs to group 2.
     PCICR |= _BV(PCIE2);
     PCMSK2 |= _BV(PCINT16);
-
-    AVRTimer::init();
 
     //DDRK &= ~(1<<PK0);
     //PORTK |= (1<<PK0);
