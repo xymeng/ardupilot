@@ -170,7 +170,7 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         _port->begin(baudrates[i]);
         _write_progstr_block(_port, _ublox_set_binary, _ublox_set_binary_size);
         while (_port->tx_pending()) {
-            for (int i = 0; i < 50; i++) {
+            for (int j = 0; j < 50; j++) {
                 AVRTimer::delay_microseconds(65535);
             }
         }
@@ -217,10 +217,27 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     HandShakeIO_APM io(hal.uartC);
     APM_SBC_Handshake handshake(&io);
 
+    // Generate pulses ourselves
+//    DDRK |= _BV(PK0);
+//    PORTK &= 0xFE;
+
+
     // Keep sending resetting messages until we succeed.
     while(!handshake.SBCResetCamera()) {
       AVRTimer::delay_microseconds(65535);
     }
+
+//    handshake.SBCFrameSyncInfo(0, 0, 0);
+
+//#define DTIME 137800
+//    for (int i = 0; i < 1000; i++) {
+//      PORTK |= 0x01;
+//      AVRTimer::delay_microseconds(65535);
+//      PORTK &= 0xFE;
+//      AVRTimer::delay_microseconds(65535);
+//    }
+//
+//    while(1);
 
     // Set time pulse frequency to 1Hz. Synchronize pulse count and
     // timestamp.
@@ -272,7 +289,7 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
             while(!this_ublox->read2()) {
                 AVRTimer::delay_microseconds(2000);
             }
-            hal.uartC->print("r");
+            //hal.uartC->print("r");
         }
     }
 
@@ -281,13 +298,20 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     tp_cfg.freq_period = 25; // XXX: testing only!!
     _send_message(CLASS_CFG, MSG_CFG_TP5, &tp_cfg, sizeof(tp_cfg)); 
 
-    // After chaning the frquency, there is still possiblity that an
+    // After changing the frequency, there is still possibility that an
     // extra 1hz pulse will be generated. This 1hz needs to be compensated
     // also. Therefore we set a flag here to tell the interrupt routine
     // to accumulate compensation time.
     start_compensation = true;
     synced = false;
     while(!synced);
+
+    handshake.SBCFrameSyncInfo(
+        pulse_count,
+        this_ublox->time_week_ms + mills_compensation,
+        this_ublox->time_week);
+
+    while(1);
 
     hal.uartC->print(this_ublox->time_week_ms, 16);
     hal.uartC->print("   ");
@@ -465,6 +489,7 @@ AP_GPS_UBLOX::_parse_gps2(void)
     case MSG_SOL:
         // XXX: for testing only!
         time_week_ms = _buffer.solution.time;
+        time_week = _buffer.solution.week;
         return true;
         break;
     default:
