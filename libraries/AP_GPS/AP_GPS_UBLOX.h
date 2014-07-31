@@ -184,6 +184,16 @@ private:
         uint8_t reserved_flags2;
         uint8_t reserved_flags3;
     };
+
+    struct PACKED ubx_tim_tp {
+      uint32_t tow_ms;
+      uint32_t tow_sub_ms;
+      int32_t  qerr;
+      uint16_t week;
+      unsigned flags : 1;
+      unsigned reserved : 1;
+    };
+
     // Receive buffer
     union PACKED {
         ubx_nav_posllh posllh;
@@ -191,6 +201,7 @@ private:
         ubx_nav_solution solution;
         ubx_nav_velned velned;
         ubx_cfg_nav_settings nav_settings;
+        ubx_tim_tp timepulse_data;
         uint8_t bytes[];
     } _buffer;
 
@@ -268,6 +279,9 @@ private:
     void		send_next_rate_update(void);
 
     
+    // Extensions for GPS sync.
+
+    uint32_t    time_of_week_msec_;
     void        _configure_time_pulse(void);
     bool        _parse_gps2();
 

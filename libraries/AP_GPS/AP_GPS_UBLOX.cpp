@@ -35,6 +35,9 @@ using namespace AP_HAL_AVR;
 #define UBLOX_DEBUGGING 0
 #define UBLOX_FAKE_3DLOCK 0
 
+#define SKIP_HANDSHAKE 1
+#define USE_LOCAL_TIME 0
+
 extern const AP_HAL::HAL& hal;
 
 #if UBLOX_DEBUGGING
@@ -51,7 +54,7 @@ const prog_char AP_GPS_UBLOX::_ublox_set_binary[] PROGMEM = UBLOX_SET_BINARY;
 const uint8_t AP_GPS_UBLOX::_ublox_set_binary_size = sizeof(AP_GPS_UBLOX::_ublox_set_binary);
 
 // Handshake IO
-class HandShakeIO_APM : public HandshakeIO {
+class HandShakeIO_APM : public quadstitch::HandshakeIO {
  public:
   HandShakeIO_APM(AP_HAL::UARTDriver *uart) : uart_(uart) {}
 
@@ -212,20 +215,25 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     for (int i = 0; i < 50; i++) {
         AVRTimer::delay_microseconds(65535);
     }
-    
+   
     hal.uartC->begin(9600, 128, 128);
+
+#if !SKIP_HANDSHAKE
     HandShakeIO_APM io(hal.uartC);
     APM_SBC_Handshake handshake(&io);
+
+    // Keep sending resetting messages until we succeed.
+    while(!handshake.SBCResetCamera()) {
+      AVRTimer::delay_microseconds(65535);
+    }
+#endif
 
     // Generate pulses ourselves
 //    DDRK |= _BV(PK0);
 //    PORTK &= 0xFE;
 
 
-    // Keep sending resetting messages until we succeed.
-    while(!handshake.SBCResetCamera()) {
-      AVRTimer::delay_microseconds(65535);
-    }
+    
 
 //    handshake.SBCFrameSyncInfo(0, 0, 0);
 
@@ -242,7 +250,9 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     // Set time pulse frequency to 1Hz. Synchronize pulse count and
     // timestamp.
     _configure_navigation_rate(1000);
+#if USE_LOCAL_TIME
     tp_cfg.freq_period = 1;  // XXX: testing only!
+#endif
     tp_cfg.freq_period_lock = 1;
     _send_message(CLASS_CFG, MSG_CFG_TP5, &tp_cfg, sizeof(tp_cfg));
 
@@ -293,10 +303,17 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         }
     }
 
+    hal.uartC->print(time_of_week_msec_, 16);
+
     // Change time pulse frequency to 25Hz.
     tp_cfg.freq_period_lock = 25;
+#if USE_LOCAL_TIME
     tp_cfg.freq_period = 25; // XXX: testing only!!
+#endif
     _send_message(CLASS_CFG, MSG_CFG_TP5, &tp_cfg, sizeof(tp_cfg)); 
+
+    // Stop sending timepulse data
+    _configure_message_rate(CLASS_TIM, MSG_TIM_TP, 0);
 
     // After changing the frequency, there is still possibility that an
     // extra 1hz pulse will be generated. This 1hz needs to be compensated
@@ -306,10 +323,12 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     synced = false;
     while(!synced);
 
+#if !SKIP_HANDSHAKE
     handshake.SBCFrameSyncInfo(
         pulse_count,
         this_ublox->time_week_ms + mills_compensation,
         this_ublox->time_week);
+#endif
 
     while(1);
 
@@ -491,6 +510,12 @@ AP_GPS_UBLOX::_parse_gps2(void)
         time_week_ms = _buffer.solution.time;
         time_week = _buffer.solution.week;
         return true;
+        break;
+    case MSG_TIM_TP:
+        if (_class == CLASS_TIM) {
+          time_of_week_msec_ = _buffer.timepulse_data.tow_ms;
+          return true;
+        }
         break;
     default:
         return false;
