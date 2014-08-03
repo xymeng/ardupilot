@@ -81,8 +81,6 @@ static void gps_sync() {
    // delay(1000);
     //hal.uartB->printf("Hello world");
     gps.init_time_pulse_mode(hal.uartB);
-
-    while(1);
 }
 
 static void init_ardupilot()

@@ -36,7 +36,7 @@ using namespace AP_HAL_AVR;
 #define UBLOX_FAKE_3DLOCK 0
 
 #define SKIP_HANDSHAKE 1
-#define USE_LOCAL_TIME 0
+#define USE_LOCAL_TIME 1
 
 extern const AP_HAL::HAL& hal;
 
@@ -116,7 +116,6 @@ void AP_GPS_UBLOX::init_time_pulse_mode(AP_HAL::UARTDriver *s) {
 }
 
 static volatile bool synced = false;
-static volatile bool locked_timestamp = false;
 static volatile int  pulse_count = 0;
 static volatile int  mills_compensation = 0;
 static volatile bool start_compensation = false;
@@ -216,7 +215,30 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         AVRTimer::delay_microseconds(65535);
     }
    
+
     hal.uartC->begin(9600, 128, 128);
+
+
+    bool skip_sync = false;
+
+    // Check if PK0 is high.
+    // If PK0 is high, it means it is disconnected from GPS output pulses.
+    // Therefore we skip synchronization.
+    DDRK &= ~(1 << PK0);
+    for (int i = 0; i < 50; i++) {
+      if (PINK & (1 << PK0)) {
+        skip_sync = true;
+        break;
+      }
+      AVRTimer::delay_microseconds(65535);
+    }
+
+    if (skip_sync) {
+      hal.uartC->print("Skip sync\n");
+      _configure_message_rate(CLASS_TIM, MSG_TIM_TP, 0);
+      return;
+    }
+
 
 #if !SKIP_HANDSHAKE
     HandShakeIO_APM io(hal.uartC);
