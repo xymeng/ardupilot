@@ -121,7 +121,7 @@ static void init_ardupilot()
                          "\n\nFree RAM: %u\n"),
                     memcheck_available_memory());
 
-    gps_sync();
+    //gps_sync();
 
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_APM2

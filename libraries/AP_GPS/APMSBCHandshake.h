@@ -1,1 +1,1 @@
-../../../quadstitch/experimental/apm_sbc_handshake/src/APMSBCHandshake.h
+../../../quadstitch/vidproclib/src/APMSBCHandshake.h
