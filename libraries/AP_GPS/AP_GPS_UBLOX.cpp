@@ -35,7 +35,9 @@ using namespace AP_HAL_AVR;
 #define UBLOX_DEBUGGING 0
 #define UBLOX_FAKE_3DLOCK 0
 
-#define SKIP_HANDSHAKE 1
+// Set to 1 to skip handshaking procedure (for debugging purpose).
+#define SKIP_HANDSHAKE 0
+// Set to 1 to use local time (no GPS lock). Only for testing.
 #define USE_LOCAL_TIME 1
 
 extern const AP_HAL::HAL& hal;
@@ -52,6 +54,8 @@ extern const AP_HAL::HAL& hal;
 
 const prog_char AP_GPS_UBLOX::_ublox_set_binary[] PROGMEM = UBLOX_SET_BINARY;
 const uint8_t AP_GPS_UBLOX::_ublox_set_binary_size = sizeof(AP_GPS_UBLOX::_ublox_set_binary);
+
+using quadstitch::APM_SBC_Handshake;
 
 // Handshake IO
 class HandShakeIO_APM : public quadstitch::HandshakeIO {
@@ -122,6 +126,8 @@ static volatile bool start_compensation = false;
 static volatile int  compensation_start_mills = 0;
 
 AP_GPS_UBLOX *this_ublox;
+static uint8_t trigger_freq = 16;
+static int trigger_interval;
 
 static void time_pulse_irq(void) {
     if (!(PINK & _BV(PK0))) {
@@ -138,7 +144,9 @@ static void time_pulse_irq(void) {
     if (!start_compensation 
         && (mills > last_mills + 900)
         && (mills < last_mills + 1100)) {    
-    } else if (mills > last_mills + 35 && mills < last_mills + 45) {
+    } else if (start_compensation
+        && mills > last_mills + trigger_interval - 5
+        && mills < last_mills + trigger_interval + 5) {
         // frequency changed.
         // disable this interrupt.
         // compute frame counter offset.
@@ -185,8 +193,8 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     tp_cfg.rf_group_delay = 0;
     tp_cfg.freq_period = 0;  // Don't output time pulse when no fix.
     tp_cfg.freq_period_lock = 0; // Don't output time pulses initially.
-    tp_cfg.pulse_len_ratio = 15000; //(((uint32_t)2) << 31);
-    tp_cfg.pulse_len_ratio_lock = 15000; //(((uint32_t)2) << 31);
+    tp_cfg.pulse_len_ratio = 1000; //(((uint32_t)2) << 31);
+    tp_cfg.pulse_len_ratio_lock = 1000; //(((uint32_t)2) << 31);
     tp_cfg.user_config_delay = 0;
     tp_cfg.active = 1;
     tp_cfg.lock_gps_freq = 1;
@@ -245,9 +253,10 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
     APM_SBC_Handshake handshake(&io);
 
     // Keep sending resetting messages until we succeed.
-    while(!handshake.SBCResetCamera()) {
+    while(!handshake.SBCResetCamera(&trigger_freq)) {
       AVRTimer::delay_microseconds(65535);
     }
+    trigger_interval = 1000 / trigger_freq;
 #endif
 
     // Generate pulses ourselves
@@ -325,12 +334,12 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         }
     }
 
-    hal.uartC->print(time_of_week_msec_, 16);
+    // hal.uartC->print(time_of_week_msec_, 16);
 
     // Change time pulse frequency to 25Hz.
-    tp_cfg.freq_period_lock = 25;
+    tp_cfg.freq_period_lock = trigger_freq;
 #if USE_LOCAL_TIME
-    tp_cfg.freq_period = 25; // XXX: testing only!!
+    tp_cfg.freq_period = trigger_freq; // XXX: testing only!!
 #endif
     _send_message(CLASS_CFG, MSG_CFG_TP5, &tp_cfg, sizeof(tp_cfg)); 
 
@@ -352,15 +361,15 @@ void AP_GPS_UBLOX::_configure_time_pulse(void) {
         this_ublox->time_week);
 #endif
 
-    while(1);
+//    while(1);
 
-    hal.uartC->print(this_ublox->time_week_ms, 16);
-    hal.uartC->print("   ");
-    hal.uartC->print(mills_compensation, 10);
-    hal.uartC->print("   ");
-    hal.uartC->print(pulse_count, 10);
-    //hal.uartC->printf("%u", this_ublox->time_week_ms);
-    hal.uartC->print("    synced");
+//    hal.uartC->print(this_ublox->time_week_ms, 16);
+//    hal.uartC->print("   ");
+//    hal.uartC->print(mills_compensation, 10);
+//    hal.uartC->print("   ");
+//    hal.uartC->print(pulse_count, 10);
+//    //hal.uartC->printf("%u", this_ublox->time_week_ms);
+//    hal.uartC->print("    synced");
 }
 
 /*
