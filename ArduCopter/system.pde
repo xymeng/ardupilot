@@ -119,7 +119,9 @@ static void init_ardupilot()
                          "\n\nFree RAM: %u\n"),
                     memcheck_available_memory());
 
-    gps_sync();
+    //if (!hal.gpio->usb_connected()) {
+    //gps_sync();
+    //}
 
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_APM2
@@ -168,6 +170,10 @@ static void init_ardupilot()
     hal.uartC->begin(map_baudrate(g.serial3_baud, SERIAL3_BAUD), 128, 128);
     gcs3.init(hal.uartC);
 #endif
+
+    // Enable gcs_uartc to send telemetry data to Jetson Tk1
+    hal.uartC->begin(57600, 128, 128);
+    gcs_tk1.init(hal.uartC);
 
     // identify ourselves correctly with the ground station
     mavlink_system.sysid = g.sysid_this_mav;
