@@ -32,7 +32,7 @@
 // those for APM
 #define MAVLINK_MAX_PAYLOAD_LEN 104
 
-#define MAVLINK_COMM_NUM_BUFFERS 2
+#define MAVLINK_COMM_NUM_BUFFERS 3
 #include "include/mavlink/v1.0/mavlink_types.h"
 
 /// MAVLink stream used for HIL interaction
