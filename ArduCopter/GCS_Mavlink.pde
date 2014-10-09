@@ -2200,6 +2200,19 @@ static void gcs_data_stream_send(void)
     if (gcs3.initialised) {
         gcs3.data_stream_send();
     }
+
+    //static unsigned short c;
+    //if (c++ >= 5) {
+    if (scheduler.time_available_usec() < 250 && motors.armed()) {
+      return;
+    } else {
+      gcs_tk1.send_message(MSG_LOCATION);
+      gcs_tk1.send_message(MSG_GPS_RAW);
+      gcs_tk1.send_message(MSG_ATTITUDE);
+    }
+
+      //c = 0;
+    //}
 }
 
 /*
